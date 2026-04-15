@@ -1,4 +1,4 @@
-name: Build macOS App
+name: Build App
 
 on:
   push:
@@ -8,7 +8,15 @@ on:
 
 jobs:
   build:
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            artifact: Upscaling-IA-macOS
+          - os: windows-latest
+            artifact: Upscaling-IA-Windows
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -22,16 +30,27 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - name: Build app
+      - name: Build app (macOS)
+        if: runner.os == 'macOS'
         run: pyinstaller "Upscaling IA.spec"
 
-      - name: Zip .app bundle
+      - name: Build app (Windows)
+        if: runner.os == 'Windows'
+        run: pyinstaller "Upscaling IA.spec"
+
+      - name: Zip .app bundle (macOS)
+        if: runner.os == 'macOS'
         run: ditto -c -k --sequesterRsrc --keepParent "dist/Upscaling IA.app" "Upscaling-IA.zip"
+
+      - name: Zip folder (Windows)
+        if: runner.os == 'Windows'
+        run: Compress-Archive -Path "dist\Upscaling IA" -DestinationPath "Upscaling-IA.zip"
+        shell: pwsh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Upscaling-IA-macOS
+          name: ${{ matrix.artifact }}
           path: Upscaling-IA.zip
 
       - name: Attach to release
