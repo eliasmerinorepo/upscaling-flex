@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
 from pathlib import Path
 import ssl
 import sys
@@ -12,6 +13,15 @@ import certifi
 # SSL handshakes fail.  Patch the default HTTPS context factory to use certifi's
 # bundled CA certificates before any network call is made.
 ssl._create_default_https_context = lambda: ssl.create_default_context(cafile=certifi.where())
+
+# When PyInstaller builds a windowed (no-console) app, sys.stdout and sys.stderr
+# are None.  Libraries like tqdm call .write() on them and crash.  Redirect to
+# devnull so those writes are silently dropped.
+import io as _io
+if sys.stdout is None:
+    sys.stdout = _io.TextIOWrapper(_io.open(os.devnull, "wb"))
+if sys.stderr is None:
+    sys.stderr = _io.TextIOWrapper(_io.open(os.devnull, "wb"))
 
 import cv2
 import numpy as np
@@ -25,9 +35,30 @@ from realesrgan import RealESRGANer
 from realesrgan.archs.srvgg_arch import SRVGGNetCompact
 
 
+def _app_data_dir() -> Path:
+    """Return a writable directory for weights and outputs.
+
+    When running as a PyInstaller bundle the directory that contains __file__
+    is either a read-only .app bundle (macOS) or a read-only _MEIPASS temp
+    folder (Windows one-file mode).  We therefore store user data next to the
+    *real* executable on Windows/Linux and in ~/Library/Application Support on
+    macOS, falling back to ~/Upscaling IA everywhere else.
+    """
+    import platform
+    if platform.system() == "Darwin":
+        base = Path.home() / "Library" / "Application Support" / "Upscaling IA"
+    elif platform.system() == "Windows":
+        appdata = os.environ.get("APPDATA")
+        base = Path(appdata) / "Upscaling IA" if appdata else Path.home() / "Upscaling IA"
+    else:
+        base = Path.home() / "Upscaling IA"
+    base.mkdir(parents=True, exist_ok=True)
+    return base
+
+
 ROOT = Path(__file__).resolve().parent
-WEIGHTS_DIR = ROOT / "weights"
-OUTPUT_DIR = ROOT / "outputs"
+WEIGHTS_DIR = _app_data_dir() / "weights"
+OUTPUT_DIR = _app_data_dir() / "outputs"
 
 
 MODEL_CONFIGS: dict[str, dict[str, Any]] = {
